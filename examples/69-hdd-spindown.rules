@@ -1,0 +1,6 @@
+# /etc/udev/rules.d/69-hdd-spindown.rules
+# Spin down idle data disks after 30 min (hdparm -S 241 = 1 x 30 min).
+# Replace the serials (udevadm info -q property -n sdX | grep ID_SERIAL_SHORT).
+# Only on "add": hdparm -S sends an IDLE command, which would wake a sleeping
+# disk on every "change" event.
+ACTION=="add", SUBSYSTEM=="block", ENV{DEVTYPE}=="disk", ENV{ID_SERIAL_SHORT}=="SERIAL1|SERIAL2", RUN+="/usr/sbin/hdparm -S 241 /dev/%k"

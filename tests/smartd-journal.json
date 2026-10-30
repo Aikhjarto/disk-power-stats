@@ -1,0 +1,14 @@
+{"__REALTIME_TIMESTAMP": "1798617600000000", "MESSAGE": "smartd 7.5 2025-04-30 r5714 [x86_64-linux-6.12.0] (SUSE RPM)"}
+{"__REALTIME_TIMESTAMP": "1798617600000000", "MESSAGE": "Device: /dev/sda [SAT], ST16000NM001G-2KK103, S/N:SERIALA, WWN:5-000c50-000000000, FW:SN03, 16.0 TB"}
+{"__REALTIME_TIMESTAMP": "1798617600000000", "MESSAGE": "Device: /dev/sdb [SAT], TOSHIBA MG10ACA20TE, S/N:SERIALB, WWN:5-000039-000000000, FW:0102, 20.0 TB"}
+{"__REALTIME_TIMESTAMP": "1798617600000000", "MESSAGE": "Monitoring 2 ATA/SATA, 0 SCSI/SAS and 0 NVMe devices"}
+{"__REALTIME_TIMESTAMP": "1798619700000000", "MESSAGE": "Device: /dev/sda [SAT], is in STANDBY mode, suspending checks"}
+{"__REALTIME_TIMESTAMP": "1798621200000000", "MESSAGE": "Device: /dev/sdb [SAT], is in STANDBY mode, suspending checks"}
+{"__REALTIME_TIMESTAMP": "1798625100000000", "MESSAGE": "Device: /dev/sda [SAT], is back in ACTIVE or IDLE mode, resuming checks (17 checks skipped)"}
+{"__REALTIME_TIMESTAMP": "1798627200000000", "MESSAGE": "Device: /dev/sda [SAT], is in STANDBY mode, suspending checks"}
+{"__REALTIME_TIMESTAMP": "1798628400000000", "MESSAGE": "Device: /dev/sda [SAT], is back in ACTIVE or IDLE mode, resuming checks (3 checks skipped)"}
+{"__REALTIME_TIMESTAMP": "1798707600000000", "MESSAGE": "Device: /dev/sdb [SAT], STANDBY mode ignored due to reached limit of skipped checks (288 checks skipped)"}
+{"__REALTIME_TIMESTAMP": "1798709700000000", "MESSAGE": "Device: /dev/sdb [SAT], is in STANDBY mode, suspending checks"}
+{"__REALTIME_TIMESTAMP": "1798711200000000", "MESSAGE": "Monitoring 2 ATA/SATA, 0 SCSI/SAS and 0 NVMe devices"}
+{"__REALTIME_TIMESTAMP": "1798713600000000", "MESSAGE": "Device: /dev/sdb [SAT], is in STANDBY mode, suspending checks"}
+{"__REALTIME_TIMESTAMP": "1798725600000000", "MESSAGE": "Device: /dev/sdb [SAT], SMART Usage Attribute: 194 Temperature_Celsius changed from 38 to 36"}

@@ -1,0 +1,141 @@
+#!/usr/bin/python3
+"""Spin-down and spin-up statistics of hard disks, from smartd's journal lines.
+
+The kernel logs neither a spin-down (the disk's own standby timer) nor a
+spin-up (the next access just takes longer). smartd with "-n standby" in
+smartd.conf skips sleeping disks and logs each change:
+
+  Device: /dev/sda [SAT], is in STANDBY mode, suspending checks
+  Device: /dev/sda [SAT], is back in ACTIVE or IDLE mode, resuming checks (7 checks skipped)
+  Device: /dev/sda [SAT], STANDBY mode ignored due to reached limit of skipped checks (288 checks skipped)
+
+This script turns them into per-disk statistics. Every time is up to one
+smartd check interval after the real event.
+"""
+import argparse
+import json
+import re
+import subprocess
+import sys
+from collections import Counter, defaultdict
+from datetime import datetime
+
+DOWN = re.compile(r"^Device: (\S+) .*, is in (?:STANDBY|SLEEP)\b.* mode, suspending checks")
+UP = re.compile(r"^Device: (\S+) .*, is back in .* mode, resuming checks")
+# after N skipped checks ("-n standby,N") smartd checks anyway, which spins the disk up
+FORCED = re.compile(r"^Device: (\S+) .*, .* mode ignored due to reached limit of skipped checks")
+# printed when smartd (re)registers the disks; registering spins sleeping disks up
+SERIAL = re.compile(r"^Device: (\S+) .*, S/N:([^,]+),")
+REGISTER = re.compile(r"^Monitoring \d+ ATA")
+
+
+def read_journal(args):
+    """Yield (datetime, message) of smartd's journal entries."""
+    if args.input:
+        lines = open(args.input) if args.input != "-" else sys.stdin
+    else:
+        cmd = ["journalctl", "-u", args.unit, "-o", "json", "--output-fields=MESSAGE"]
+        if args.since:
+            cmd += ["--since", args.since]
+        if args.until:
+            cmd += ["--until", args.until]
+        lines = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.splitlines()
+    for line in lines:
+        e = json.loads(line)
+        msg = e.get("MESSAGE")
+        if isinstance(msg, str):   # journald stores non-UTF-8 messages as byte arrays
+            yield datetime.fromtimestamp(int(e["__REALTIME_TIMESTAMP"]) / 1e6), msg
+
+
+def collect(entries):
+    """Return (first, last, naps, ups, serials, events) of the journal entries."""
+    first = last = None
+    asleep = {}                       # dev -> time it was seen asleep
+    naps = defaultdict(list)          # dev -> [(asleep since, awake again)]
+    ups = defaultdict(list)           # dev -> [time of spin-up]
+    serials = {}                      # dev -> serial (last registration)
+    events = []                       # (time, dev, text)
+
+    def wake(dev, t, why):
+        ups[dev].append(t)
+        events.append((t, dev, why))
+        if dev in asleep:
+            naps[dev].append((asleep.pop(dev), t))
+
+    for t, msg in entries:
+        first = first or t
+        last = t
+        if m := DOWN.search(msg):
+            if m[1] not in asleep:
+                asleep[m[1]] = t
+                events.append((t, m[1], "spin-down"))
+        elif m := UP.search(msg):
+            wake(m[1], t, "spin-up")
+        elif m := FORCED.search(msg):
+            wake(m[1], t, "spin-up (forced smartd check)")
+        elif m := SERIAL.search(msg):
+            serials[m[1]] = m[2]
+        elif REGISTER.search(msg):
+            for dev in list(asleep):
+                wake(dev, t, "spin-up (smartd start)")
+    return first, last, naps, ups, serials, events, asleep
+
+
+def fmt(sec):
+    h, m = divmod(int(sec) // 60, 60)
+    return f"{h}h{m:02d}" if h else f"{m}min"
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--since", help='start of the period, in journalctl syntax (default: whole journal)')
+    ap.add_argument("--until", help="end of the period, in journalctl syntax (default: now)")
+    ap.add_argument("--unit", default="smartd", help="systemd unit of smartd (default: %(default)s; Debian: smartmontools)")
+    ap.add_argument("--events", action="store_true", help="also list every event")
+    ap.add_argument("--input", help="read journal entries from this file of 'journalctl -o json' output instead ('-' for stdin)")
+    args = ap.parse_args()
+
+    first, last, naps, ups, serials, events, asleep = collect(read_journal(args))
+    if first is None:
+        print("no smartd journal entries in this period")
+        return
+    end = last if args.until or args.input else max(datetime.now(), last)
+    for dev, t0 in asleep.items():
+        naps[dev].append((t0, end))
+    window = max((end - first).total_seconds(), 1)
+
+    print(f"period {first:%F %H:%M} .. {end:%F %H:%M} ({fmt(window)});"
+          " times are up to one smartd check interval late")
+    devs = sorted(set(naps) | set(ups))
+    if not devs:
+        print("no spin-downs in this period")
+        return
+
+    print(f"\n{'disk':10} {'serial':20} {'downs':>5} {'ups':>4} {'asleep':>9} {'%':>5} {'shortest':>9} {'median':>9}")
+    for dev in devs:
+        d = sorted((b - a).total_seconds() for a, b in naps[dev])
+        total = sum(d)
+        print(f"{dev:10} {serials.get(dev, '?'):20} {len(naps[dev]):5} {len(ups[dev]):4} {fmt(total):>9} "
+              f"{100 * total / window:5.1f} {fmt(d[0]) if d else '-':>9} {fmt(d[len(d) // 2]) if d else '-':>9}")
+    for dev in sorted(asleep):
+        print(f"({dev} is still asleep)")
+
+    if ups:
+        cols = " ".join(f"{dev.removeprefix('/dev/'):>6}" for dev in devs)
+        print(f"\nspin-ups per day\n{'':10} {cols}")
+        for day in sorted({t.date() for v in ups.values() for t in v}):
+            print(f"{day} " + " ".join(f"{sum(t.date() == day for t in ups[dev]):6}" for dev in devs))
+        print(f"\nspin-ups by hour of day\nhour       {cols}")
+        hours = {dev: Counter(t.hour for t in ups[dev]) for dev in devs}
+        for h in range(24):
+            if any(hours[dev][h] for dev in devs):
+                print(f"{h:02d}:00      " + " ".join(f"{hours[dev][h]:6}" for dev in devs))
+
+    if args.events:
+        print("\nevents")
+        for t, dev, what in events:
+            print(f"{t:%F %T}  {dev:10} {what}")
+
+
+if __name__ == "__main__":
+    main()
